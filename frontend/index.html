@@ -1,0 +1,579 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Smart Task Analyzer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --gap:18px; --card-radius:10px; --muted:#6b7280; --bg:#fbfbfb;
+      --accent:#111827; --panel-bg:#fff;
+    }
+    body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;margin:24px;background:var(--bg);color:#111827;}
+    .wrapper{display:flex;gap:var(--gap);align-items:flex-start;flex-wrap:wrap}
+    .panel{background:var(--panel-bg);padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.06);}
+    .left{width:420px;min-width:300px;display:flex;flex-direction:column;gap:12px}
+    .left .subpanel{background:#fff;padding:12px;border-radius:10px;border:1px solid #eef2f6}
+    h1{margin:0 0 6px 0;font-size:20px} h2{margin:0 0 12px 0;font-size:16px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    textarea{width:100%;height:180px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;font-family:monospace;box-sizing:border-box;resize:vertical;color:#111827;background:#fff;}
+    input[type="text"], input[type="date"], input[type="number"], select {width:100%;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;}
+    input[type="range"]{width:100%}
+    .controls{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    button{background:var(--accent);color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.06);}
+    button.secondary{background:#f3f4f6;color:var(--accent);border:1px solid #e5e7eb}
+    .muted{color:var(--muted);font-size:13px} .results{flex:1;min-width:320px}
+    #resultArea{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+    .card{border-radius:var(--card-radius);padding:12px;border:1px solid rgba(15,23,42,0.06);display:flex;justify-content:space-between;gap:10px;background:#fff;}
+    .badge{display:inline-block;padding:6px 8px;border-radius:999px;font-weight:600;font-size:13px}
+    .Critical{border-left:8px solid #c53030} .High{border-left:8px solid #dd6b20}
+    .Medium{border-left:8px solid #d69e2e} .Low{border-left:8px solid #10b981}
+    .legend{display:flex;gap:8px;align-items:center;margin-top:12px}
+    .dot{width:14px;height:14px;border-radius:4px}
+    .dot.critical{background:#c53030} .dot.high{background:#dd6b20} .dot.medium{background:#d69e2e} .dot.low{background:#10b981}
+    .tools{display:flex;gap:8px;align-items:center} .spinner{border:3px solid rgba(0,0,0,0.06);border-left-color:#111827;border-radius:50%;width:18px;height:18px;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .small{font-size:13px;padding:6px 10px}
+    @media (max-width:980px){ .left{width:100%} .results{width:100%} .wrapper{flex-direction:column} }
+    .form-row{display:flex;gap:8px} .form-row > div{flex:1} .help{font-size:12px;color:#7b8794;margin-top:6px}
+    /* Matrix */
+    .matrix-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    .matrix-cell{background:#fff;padding:12px;border-radius:8px;border:1px solid #eef2f6;min-height:140px}
+    .matrix-task{padding:8px;border-radius:6px;border:1px solid #e6edf3;margin-bottom:8px;cursor:pointer}
+    .circular-warning{color:#c53030;font-weight:700;margin-top:6px}
+    /* Graph */
+    #graphCanvas{display:none;border-radius:8px;background:#fff;border:1px solid #eef2f6}
+    .scoring-panel{margin-top:12px;padding:12px;border-radius:8px;border:1px solid #eef2f6;background:#fff}
+    .scoring-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    .scoring-row label{min-width:160px;color:var(--muted);font-size:13px}
+    .score-val{min-width:48px;text-align:right;font-weight:600}
+  </style>
+</head>
+<body>
+  <h1>Smart Task Analyzer</h1>
+  <p class="muted">Use the form to add a task, or paste a JSON array for bulk input. Click Analyze to prioritize.</p>
+
+  <div class="wrapper">
+    <div class="panel left">
+      <div class="subpanel">
+        <h2>Add a Task</h2>
+        <label for="formTitle">Title <span style="color:#c53030">*</span></label>
+        <input id="formTitle" type="text" placeholder="e.g., Fix login bug" />
+        <div class="form-row" style="margin-top:8px">
+          <div><label for="formDue">Due date</label><input id="formDue" type="date" /></div>
+          <div><label for="formHours">Est. hours</label><input id="formHours" type="number" min="1" value="1" /></div>
+        </div>
+        <div style="margin-top:8px">
+          <label for="formImportance">Importance: <span id="importanceValue" style="font-weight:600">5</span></label>
+          <input id="formImportance" type="range" min="1" max="10" value="5" />
+          <div class="help">1 = low priority, 10 = very important</div>
+        </div>
+        <div style="margin-top:8px">
+          <label for="formDeps">Dependencies (comma-separated titles or IDs)</label>
+          <input id="formDeps" type="text" placeholder="e.g., Task A, Task B or 3,4" />
+          <div class="help">Leave blank if none. These will be stored as a list.</div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button onclick="addTaskFromForm()">Add Task</button>
+          <button class="secondary" onclick="previewTasks()">Preview</button>
+          <button class="secondary" onclick="clearAll()">Clear</button>
+        </div>
+      </div>
+
+      <div class="subpanel" style="margin-top:12px">
+        <h2>Input Tasks (JSON Array)</h2>
+        <textarea id="taskInput">[
+  {"title":"Fix bug","due_date":"2025-11-29","importance":9,"estimated_hours":2,"dependencies":[]},
+  {"title":"Write docs","due_date":"2025-12-10","importance":5,"estimated_hours":3,"dependencies":[]},
+  {"title":"Deep refactor","due_date":null,"importance":7,"estimated_hours":20,"dependencies":[]}
+]</textarea>
+
+        <div class="controls" style="margin-top:10px">
+          <div class="tools">
+            <button id="analyzeBtn" onclick="analyzeTasks()">Analyze</button>
+            <button class="secondary" onclick="suggestSample()">Suggest (sample)</button>
+          </div>
+
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <label for="strategy" class="muted">Sort:</label>
+            <select id="strategy">
+              <option value="default">Default (server score)</option>
+              <option value="fastest">Fastest Wins</option>
+              <option value="deadline">Deadline Driven</option>
+              <option value="impact">High Impact (importance first)</option>
+            </select>
+
+            <label style="margin-left:12px" class="muted">View:</label>
+            <select id="viewMode" onchange="renderCurrentView()" title="Toggle between list, matrix or graph view">
+              <option value="list">List</option>
+              <option value="matrix">Eisenhower Matrix</option>
+              <option value="graph">Dependency Graph</option>
+            </select>
+
+            <button class="secondary small" onclick="exportCSV()">Export CSV</button>
+          </div>
+        </div>
+
+        <div id="status" class="muted" style="margin-top:8px">Ready</div>
+      </div>
+
+      <div class="scoring-panel">
+        <h3 style="margin:0 0 8px 0">Custom Scoring</h3>
+        <div class="scoring-row">
+          <label>Importance multiplier</label>
+          <input id="w_importance_mul" type="number" min="1" max="20" value="8" style="width:80px" />
+          <div class="score-val" id="val_importance_mul">8</div>
+        </div>
+        <div class="scoring-row">
+          <label>Urgency – overdue / today / soon / week (comma)</label>
+          <input id="w_urgency_set" type="text" value="150,80,50,20" />
+          <div class="help" style="font-size:12px;color:#7b8794">Format: overdue,today,soon,week</div>
+        </div>
+        <div class="scoring-row">
+          <label>Effort bonuses (quick,small,medium,large_penalty)</label>
+          <input id="w_effort_set" type="text" value="12,6,2,-5" />
+          <div class="help" style="font-size:12px;color:#7b8794">Format: quick,small,medium,large</div>
+        </div>
+        <div class="scoring-row">
+          <label>Dependency penalty per dep</label>
+          <input id="w_dep_pen" type="number" min="0" max="100" value="5" style="width:80px" />
+          <div class="score-val" id="val_dep_pen">5</div>
+        </div>
+        <div class="scoring-row">
+          <label>Cycle penalty</label>
+          <input id="w_cycle_pen" type="number" min="0" max="200" value="40" style="width:80px" />
+          <div class="score-val" id="val_cycle_pen">40</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="secondary" onclick="resetWeights()">Reset</button>
+          <button onclick="applyWeightsPreview()">Apply (preview on client)</button>
+        </div>
+        <div class="help" style="margin-top:8px">These weights are sent to the server when you click Analyze (if changed).</div>
+      </div>
+
+    </div>
+
+    <div class="panel results">
+      <h2>Results</h2>
+      <div class="legend">
+        <div class="item"><span class="dot critical"></span> Critical</div>
+        <div class="item"><span class="dot high"></span> High</div>
+        <div class="item"><span class="dot medium"></span> Medium</div>
+        <div class="item"><span class="dot low"></span> Low</div>
+      </div>
+
+      <div id="resultArea"></div>
+      <div id="matrixArea" style="display:none;margin-top:14px"></div>
+      <canvas id="graphCanvas" style="display:none;margin-top:12px"></canvas>
+    </div>
+  </div>
+
+<script>
+/* =========================
+   Client-side state & URLs
+   ========================= */
+const API_BASE = 'http://127.0.0.1:8000';
+const analyzeUrl = API_BASE + '/api/tasks/analyze/';
+const suggestUrl = API_BASE + '/api/tasks/suggest/?use_sample=1';
+
+let tasksArray = [];
+let lastDisplayed = [];
+
+/* ========================= Helpers ========================= */
+function setStatus(text, busy=false){
+  const s = document.getElementById('status');
+  s.innerHTML = busy ? `<span class="spinner"></span> ${text}` : text;
+}
+function escapeHtml(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);}
+function updateTextareaFromTasks(){ document.getElementById('taskInput').value = JSON.stringify(tasksArray, null, 2); }
+
+/* ========================= Form interactions ========================= */
+const importanceEl = document.getElementById('formImportance');
+const importanceValueEl = document.getElementById('importanceValue');
+importanceEl.addEventListener('input', ()=> importanceValueEl.textContent = importanceEl.value);
+
+function parseDepsInput(val){ if(!val) return []; return val.split(',').map(s=>s.trim()).filter(Boolean); }
+function addTaskFromForm(){
+  const title = document.getElementById('formTitle').value.trim();
+  const due = document.getElementById('formDue').value || null;
+  const hoursRaw = document.getElementById('formHours').value;
+  const importance = Number(document.getElementById('formImportance').value || 5);
+  const depsRaw = document.getElementById('formDeps').value;
+  if(!title){ alert('Title is required'); return; }
+  let estimated_hours = 1;
+  try{ estimated_hours = Math.max(1, parseInt(hoursRaw,10) || 1); }catch(e){ estimated_hours = 1; }
+  const deps = parseDepsInput(depsRaw);
+  const newTask = { title, due_date: due || null, importance, estimated_hours, dependencies: deps };
+  tasksArray.push(newTask);
+  updateTextareaFromTasks();
+  setStatus('Task added. You can Analyze or keep adding.');
+  document.getElementById('formTitle').value=''; document.getElementById('formDue').value=''; document.getElementById('formHours').value=1; document.getElementById('formDeps').value='';
+}
+
+function previewTasks(){
+  try {
+    const parsed = JSON.parse(document.getElementById('taskInput').value);
+    if(!Array.isArray(parsed)) throw new Error('JSON must be an array');
+    tasksArray = parsed;
+    setStatus('Preview loaded into memory (tasksArray).');
+  } catch (e){ alert('Invalid JSON: ' + e.message); setStatus('Invalid JSON'); }
+}
+
+function clearAll(){
+  if(confirm('Clear all tasks from memory and textarea?')){ tasksArray=[]; updateTextareaFromTasks(); setStatus('Cleared all tasks.'); document.getElementById('resultArea').innerHTML=''; document.getElementById('matrixArea').innerHTML=''; drawGraph([]); }
+}
+
+/* ========================= Scoring weights UI helpers ========================= */
+function resetWeights(){
+  document.getElementById('w_importance_mul').value = 8;
+  document.getElementById('w_urgency_set').value = '150,80,50,20';
+  document.getElementById('w_effort_set').value = '12,6,2,-5';
+  document.getElementById('w_dep_pen').value = 5;
+  document.getElementById('w_cycle_pen').value = 40;
+  document.getElementById('val_importance_mul').textContent = 8;
+  document.getElementById('val_dep_pen').textContent = 5;
+  document.getElementById('val_cycle_pen').textContent = 40;
+}
+document.getElementById('w_importance_mul').addEventListener('input', e=> document.getElementById('val_importance_mul').textContent = e.target.value);
+document.getElementById('w_dep_pen').addEventListener('input', e=> document.getElementById('val_dep_pen').textContent = e.target.value);
+document.getElementById('w_cycle_pen').addEventListener('input', e=> document.getElementById('val_cycle_pen').textContent = e.target.value);
+
+function buildWeightsFromUI(){
+  const impMul = Number(document.getElementById('w_importance_mul').value || 8);
+  const urgParts = (document.getElementById('w_urgency_set').value || '150,80,50,20').split(',').map(x=>parseInt(x.trim(),10) || 0);
+  const effParts = (document.getElementById('w_effort_set').value || '12,6,2,-5').split(',').map(x=>parseInt(x.trim(),10) || 0);
+  const depPen = Number(document.getElementById('w_dep_pen').value || 5);
+  const cyclePen = Number(document.getElementById('w_cycle_pen').value || 40);
+  return {
+    "importance_mul": impMul,
+    "urgency_overdue": urgParts[0] || 150,
+    "urgency_today": urgParts[1] || 80,
+    "urgency_soon": urgParts[2] || 50,
+    "urgency_week": urgParts[3] || 20,
+    "effort_quick_bonus": effParts[0] || 12,
+    "effort_small_bonus": effParts[1] || 6,
+    "effort_medium_bonus": effParts[2] || 2,
+    "effort_large_penalty": effParts[3] || -5,
+    "dependency_penalty_per": depPen,
+    "dependency_cycle_pen": cyclePen,
+    "tie_base": 5,
+    "weekend_urgency_multiplier": 0.5
+  };
+}
+
+function applyWeightsPreview(){
+  analyzeTasks(true);
+}
+
+/* ========================= Analyze / Suggest / Display ========================= */
+async function analyzeTasks(skipTextareaValidation=false){
+  let toSend;
+  if(tasksArray && tasksArray.length > 0){
+    toSend = tasksArray;
+  } else {
+    try {
+      toSend = JSON.parse(document.getElementById('taskInput').value);
+      if(!Array.isArray(toSend)) throw new Error('Expected JSON array');
+    } catch (e){
+      alert('Invalid JSON: ' + e.message);
+      setStatus('Invalid JSON');
+      return;
+    }
+  }
+
+  setStatus('Analyzing...', true);
+  document.getElementById('analyzeBtn').disabled = true;
+
+  const payload = { tasks: toSend, weights: buildWeightsFromUI() };
+
+  try {
+    const res = await fetch(analyzeUrl, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(`Server returned ${res.status}: ${txt}`);
+    }
+    const data = await res.json();
+    tasksArray = data.map(t=>({
+      title: t.title, due_date: t.due_date ?? null, importance: t.importance,
+      estimated_hours: t.estimated_hours, dependencies: t.dependencies ?? [],
+      score: t.score, breakdown: t.breakdown, priority: t.priority, explanation: t.explanation, circular: t.circular || false
+    }));
+    updateTextareaFromTasks();
+    applyClientSortAndDisplay(tasksArray);
+    setStatus('Analysis complete');
+  } catch (err){
+    console.error(err);
+    alert('Failed to analyze tasks: ' + err.message);
+    setStatus('Error: ' + err.message);
+  } finally {
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+async function suggestSample(){
+  setStatus('Loading sample...', true);
+  try {
+    const res = await fetch(suggestUrl);
+    if(!res.ok) throw new Error('Server returned ' + res.status);
+    const data = await res.json();
+    const top = data.top || [];
+    tasksArray = top;
+    updateTextareaFromTasks();
+    applyClientSortAndDisplay(top);
+    setStatus('Sample loaded');
+  } catch (err){
+    console.error(err);
+    alert('Failed to fetch sample: ' + err.message);
+    setStatus('Error: ' + err.message);
+  }
+}
+
+/* ========================= Sorting + display logic ========================= */
+function applyClientSortAndDisplay(list){
+  const strategy = document.getElementById('strategy').value;
+  let arr = Array.isArray(list) ? list.slice() : [];
+
+  if(strategy === 'fastest'){
+    arr.sort((a,b)=> {
+      const ha=Number(a.estimated_hours||0), hb=Number(b.estimated_hours||0);
+      return ha-hb || (b.score||0)-(a.score||0);
+    });
+  } else if(strategy === 'deadline'){
+    const toDate = d => (!d ? Infinity : new Date(d).getTime());
+    arr.sort((a,b)=> toDate(a.due_date)-toDate(b.due_date) || (b.score||0)-(a.score||0));
+  } else if(strategy === 'impact'){
+    arr.sort((a,b)=> (Number(b.importance||0)-Number(a.importance||0)) || (b.score||0)-(a.score||0));
+  } else {
+    arr.sort((a,b)=> (b.score||0)-(a.score||0));
+  }
+
+  lastDisplayed = arr;
+  renderCurrentView();
+}
+
+function displayResults(list){
+  const root = document.getElementById('resultArea');
+  root.innerHTML = '';
+  if(!list.length){ root.innerHTML = '<div class="muted">No tasks to display</div>'; return; }
+
+  list.forEach((t, index)=>{
+    const div = document.createElement('div');
+    div.className = 'card ' + (t.priority || '');
+    const title = escapeHtml(t.title||'(no title)');
+    const score = t.score ?? 0, priority = escapeHtml(t.priority||'N/A');
+    const due = escapeHtml(t.due_date || '—'), hours = escapeHtml(String(t.estimated_hours ?? '—'));
+    const deps = (t.dependencies && t.dependencies.length) ? escapeHtml(t.dependencies.join(', ')) : '';
+
+    let breakdownHtml = '';
+    if(t.breakdown){
+      const b = t.breakdown;
+      breakdownHtml = `
+        <div style="margin-top:8px;border-top:1px dashed #eee;padding-top:8px;font-size:13px;color:#444">
+          <strong>Score breakdown</strong>
+          <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
+            <div>Urgency: <strong>${b.urgency}</strong></div>
+            <div>Importance: <strong>${b.importance}</strong></div>
+            <div>Effort: <strong>${b.effort}</strong></div>
+            <div>Dependency penalty: <strong>${b.dependency_penalty}</strong></div>
+            <div>Tie-breaker: <strong>${b.tie_breaker}</strong></div>
+          </div>
+        </div>
+      `;
+    }
+
+    const circularHtml = t.circular ? `<div class="circular-warning">⚠️ Circular dependency detected — resolve before starting</div>` : '';
+    const explanation = t.explanation ? `<div style="margin-top:8px;color:#555;font-size:13px"><em>${escapeHtml(t.explanation)}</em></div>` : '';
+
+    div.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:12px;width:100%">
+        <div style="flex:1">
+          <strong style="font-size:15px">${title}</strong>
+          <div class="meta" style="margin-top:6px">Due: ${due} • Est: ${hours}h ${deps ? '• Depends: ' + deps : ''}</div>
+          ${circularHtml}
+          ${explanation}
+          ${breakdownHtml}
+        </div>
+        <div style="text-align:right;min-width:150px">
+          <div style="margin-bottom:6px"><span class="badge">${priority}</span></div>
+          <div class="meta">Score: <strong>${score}</strong></div>
+        </div>
+      </div>
+    `;
+    root.appendChild(div);
+  });
+}
+
+/* ========================= Eisenhower Matrix ========================= */
+function renderMatrix(list){
+  const urgentFn = (t) => { const b=t.breakdown||{}; if(typeof b.urgency==='number' && b.urgency>0) return true; if(t.due_date){ try { const d=new Date(t.due_date); const diff=(d-new Date())/(1000*60*60*24); return diff<=7; } catch(e){} } return false; };
+  const importantFn = (t) => Number(t.importance||0) >= 7;
+  const a=[], b=[], c=[], d=[];
+  (list||[]).forEach(task => { const isUrg = urgentFn(task); const isImp = importantFn(task); if(isImp && isUrg) a.push(task); else if(isImp && !isUrg) b.push(task); else if(!isImp && isUrg) c.push(task); else d.push(task); });
+  const container = document.getElementById('matrixArea'); container.style.display='block';
+  container.innerHTML = `<div class="matrix-grid">
+    <div class="matrix-cell"><h3>Important & Urgent</h3>${a.map(t=>`<div class="matrix-task" onclick="highlightTask('${escapeHtml(t.title)}')">${escapeHtml(t.title)} ${t.circular?'⚠️':''}</div>`).join('')||'<div class="muted">—</div>'}</div>
+    <div class="matrix-cell"><h3>Important & Not Urgent</h3>${b.map(t=>`<div class="matrix-task" onclick="highlightTask('${escapeHtml(t.title)}')">${escapeHtml(t.title)} ${t.circular?'⚠️':''}</div>`).join('')||'<div class="muted">—</div>'}</div>
+    <div class="matrix-cell"><h3>Not Important & Urgent</h3>${c.map(t=>`<div class="matrix-task" onclick="highlightTask('${escapeHtml(t.title)}')">${escapeHtml(t.title)} ${t.circular?'⚠️':''}</div>`).join('')||'<div class="muted">—</div>'}</div>
+    <div class="matrix-cell"><h3>Not Important & Not Urgent</h3>${d.map(t=>`<div class="matrix-task" onclick="highlightTask('${escapeHtml(t.title)}')">${escapeHtml(t.title)} ${t.circular?'⚠️':''}</div>`).join('')||'<div class="muted">—</div>'}</div>
+  </div>`;
+}
+
+/* ========================= Graph View (canvas) ========================= */
+function drawGraph(list){
+  const canvas = document.getElementById('graphCanvas');
+  if(!canvas) return;
+
+  // sizing: make canvas match parent width and fixed height
+  const parentWidth = canvas.parentElement.clientWidth;
+  const height = 360;
+  // Set CSS size
+  canvas.style.width = (parentWidth) + "px";
+  canvas.style.height = height + "px";
+  // Proper backing store size for crispness
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(parentWidth * dpr);
+  canvas.height = Math.floor(height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale drawing operations
+  // clear
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if(!list || list.length===0) return;
+
+  // simple circular layout
+  const n = list.length;
+  const cx = parentWidth / 2;
+  const cy = height / 2;
+  const r = Math.max(80, Math.min(cx, cy) - 60);
+
+  const nodes = [];
+  for(let i=0;i<n;i++){
+    const a = (Math.PI*2*i)/n - Math.PI/2;
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    nodes.push({x,y,task:list[i]});
+  }
+
+  // draw edges
+  ctx.strokeStyle = '#9aa4ad'; ctx.fillStyle='#111827'; ctx.lineWidth=1.2; ctx.font='12px Arial';
+  function arrow(fromX,fromY,toX,toY){
+    const dx = toX-fromX, dy = toY-fromY; const ang = Math.atan2(dy,dx);
+    ctx.beginPath(); ctx.moveTo(fromX,fromY); ctx.lineTo(toX, toY); ctx.stroke();
+    // head
+    const headlen = 8;
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headlen*Math.cos(ang - Math.PI/6), toY - headlen*Math.sin(ang - Math.PI/6));
+    ctx.lineTo(toX - headlen*Math.cos(ang + Math.PI/6), toY - headlen*Math.sin(ang + Math.PI/6));
+    ctx.closePath(); ctx.fillStyle='#6b7280'; ctx.fill();
+  }
+  const idMap = {};
+  list.forEach((t,i)=> idMap[String(t.title)] = i);
+  for(let i=0;i<n;i++){
+    const deps = (list[i].dependencies||[]);
+    deps.forEach(d=>{
+      const j = idMap[String(d)];
+      if(j !== undefined){
+        arrow(nodes[i].x, nodes[i].y, nodes[j].x, nodes[j].y);
+      }
+    });
+  }
+
+  // draw nodes
+  for(let i=0;i<n;i++){
+    const node = nodes[i];
+    const color = node.task.priority === 'Critical' ? '#c53030' : (node.task.priority==='High' ? '#dd6b20' : (node.task.priority==='Medium' ? '#d69e2e' : '#10b981'));
+    ctx.beginPath(); ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 3;
+    ctx.arc(node.x, node.y, 24, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#111827'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    let label = String(node.task.title || '').slice(0,16);
+    ctx.fillText(label, node.x, node.y);
+    node.box = {x: node.x-24, y: node.y-24, w:48, h:48};
+  }
+
+  // click handler
+  canvas.onclick = function(e){
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left);
+    const my = (e.clientY - rect.top);
+    for(const node of nodes){
+      const b = node.box;
+      if(mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h){
+        highlightTask(node.task.title);
+        break;
+      }
+    }
+  };
+}
+
+/* ========================= Highlight helper ========================= */
+function highlightTask(title){
+  const all = Array.from(document.querySelectorAll('#resultArea .card'));
+  for(const card of all){
+    if(card.textContent && card.textContent.includes(title)){
+      card.scrollIntoView({behavior:'smooth', block:'center'});
+      card.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.12)';
+      setTimeout(()=> card.style.boxShadow = '0 6px 18px rgba(15,23,42,0.06)', 1800);
+      break;
+    }
+  }
+}
+
+/* ========================= View Render ========================= */
+function renderCurrentView(){
+  const mode = document.getElementById('viewMode').value;
+  if(mode === 'matrix'){
+    document.getElementById('resultArea').style.display = 'none';
+    document.getElementById('graphCanvas').style.display = 'none';
+    renderMatrix(lastDisplayed && lastDisplayed.length ? lastDisplayed : tasksArray);
+  } else if(mode === 'graph'){
+    document.getElementById('resultArea').style.display = 'none';
+    document.getElementById('matrixArea').style.display = 'none';
+    document.getElementById('graphCanvas').style.display = 'block';
+    drawGraph(lastDisplayed && lastDisplayed.length ? lastDisplayed : tasksArray);
+  } else {
+    document.getElementById('matrixArea').style.display = 'none';
+    document.getElementById('graphCanvas').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'flex';
+    displayResults(lastDisplayed && lastDisplayed.length ? lastDisplayed : tasksArray);
+  }
+}
+
+/* ========================= CSV exporter ========================= */
+function exportCSV(){
+  const root = document.getElementById('resultArea');
+  const cards = Array.from(root.querySelectorAll('.card'));
+  if(cards.length === 0){ alert('No results to export'); return; }
+  const rows = [['title','priority','score','due_date','estimated_hours','dependencies']];
+  cards.forEach(c=>{
+    const title = c.querySelector('strong')?.textContent?.trim() || '';
+    const priority = (c.className.match(/\b(Critical|High|Medium|Low)\b/) || [''])[0] || '';
+    const score = c.querySelector('.meta strong')?.textContent || '';
+    const metas = Array.from(c.querySelectorAll('.meta')).map(x=>x.textContent);
+    const due = metas.find(m => m.includes('Due:'))?.replace('Due:','').trim() || '';
+    const est = metas.find(m => m.includes('Est:'))?.replace('Est:','').replace('h','').trim() || '';
+    const deps = metas[0] && metas[0].includes('Depends:') ? metas[0].split('Depends:')[1].trim() : '';
+    rows.push([title,priority,score,due,est,deps]);
+  });
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'task-analysis.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+/* ========================= Init & Resize handler ========================= */
+(function init(){ try { const parsed = JSON.parse(document.getElementById('taskInput').value); if(Array.isArray(parsed)) tasksArray = parsed; } catch(e){} })();
+
+window.addEventListener('resize', () => {
+  const mode = document.getElementById('viewMode')?.value;
+  if (mode === 'graph') {
+    drawGraph(lastDisplayed && lastDisplayed.length ? lastDisplayed : tasksArray);
+  }
+});
+</script>
+</body>
+</html>
