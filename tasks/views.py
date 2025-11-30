@@ -1,4 +1,3 @@
-# tasks/views.py
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -94,7 +93,7 @@ def analyze_tasks(request):
     except Exception as e:
         return JsonResponse({"error": "Invalid JSON: " + str(e)}, status=400)
 
-    # Accept both forms
+    
     if isinstance(payload, dict) and "tasks" in payload:
         tasks = payload.get("tasks", [])
         weights = payload.get("weights") or {}
@@ -107,7 +106,7 @@ def analyze_tasks(request):
     if not isinstance(tasks, list):
         return JsonResponse({"error": "Expected tasks to be a list."}, status=400)
 
-    # detect cycles
+    
     cycle_indexes = detect_cycles(tasks)
 
     enriched = []
@@ -117,7 +116,7 @@ def analyze_tasks(request):
             task_copy["in_cycle"] = True
         else:
             task_copy["in_cycle"] = False
-        # pass weights through to scoring function
+        
         result = calculate_task_score(task_copy, weights=weights)
         score = result["score"]
         breakdown = result["components"]

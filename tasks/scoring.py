@@ -1,4 +1,3 @@
-# tasks/scoring.py
 from datetime import date, datetime
 import math
 import random
@@ -9,18 +8,17 @@ def _parse_date(val):
     if isinstance(val, date):
         return val
     try:
-        # Accept ISO format YYYY-MM-DD
+        
         return datetime.strptime(val, "%Y-%m-%d").date()
     except Exception:
         try:
-            # Some UIs might send dd-mm-yyyy accidentally; try fallback (not recommended)
+            
             return datetime.strptime(val, "%d-%m-%Y").date()
         except Exception:
             return None
 
 def _is_sunday(dt):
-    return dt.weekday() == 6  # Monday=0 ... Sunday=6
-
+    return dt.weekday() == 6 
 def calculate_task_score(task_data, weights=None):
     """
     Calculate a priority score for a single task.
@@ -34,7 +32,7 @@ def calculate_task_score(task_data, weights=None):
     Returns:
        { "score": int, "components": { urgency, importance, effort, dependency_penalty, tie_breaker } }
     """
-    # Default weights (mirror frontend default)
+
     defaults = {
         "importance_mul": 8,
         "urgency_overdue": 150,
@@ -48,7 +46,7 @@ def calculate_task_score(task_data, weights=None):
         "dependency_penalty_per": 5,
         "dependency_cycle_pen": 40,
         "tie_base": 5,
-        # weekend multiplier (reduce urgency if due on Sunday)
+    
         "weekend_urgency_multiplier": 0.5
     }
     if weights and isinstance(weights, dict):
@@ -57,14 +55,14 @@ def calculate_task_score(task_data, weights=None):
     else:
         cfg = defaults
 
-    # safe reads and defaults
+    
     importance = int(task_data.get("importance") or 0)
     try:
         est_hours = int(task_data.get("estimated_hours") or 0)
     except Exception:
         est_hours = 0
     deps = task_data.get("dependencies") or []
-    # allow both titles and numeric ids in dependencies
+    
     dep_count = len([d for d in deps if d is not None])
 
     # 1) Urgency score
@@ -76,7 +74,7 @@ def calculate_task_score(task_data, weights=None):
     if due_date:
         delta = (due_date - today).days
         days_until = delta
-        # overdue
+        
         if delta < 0:
             urgency_score += cfg["urgency_overdue"]
         elif delta == 0:
@@ -85,7 +83,7 @@ def calculate_task_score(task_data, weights=None):
             urgency_score += cfg["urgency_soon"]
         elif delta <= 7:
             urgency_score += cfg["urgency_week"]
-        # weekend-aware: if due date is Sunday, reduce urgency contribution
+        
         try:
             if _is_sunday(due_date):
                 urgency_score = int(urgency_score * float(cfg.get("weekend_urgency_multiplier", 0.5)))
@@ -96,14 +94,14 @@ def calculate_task_score(task_data, weights=None):
         urgency_score += 0
 
     # 2) Importance contribution
-    # scale importance (1-10) by multiplier
+    
     importance_score = int((importance or 0) * int(cfg.get("importance_mul", 8)))
 
     # 3) Effort / quick-win logic
-    # Treat very small tasks as quick wins
+
     effort_score = 0
     if est_hours <= 0:
-        # Invalid hours => neutral
+        
         effort_score += 0
     elif est_hours <= 1:
         effort_score += int(cfg.get("effort_quick_bonus", 12))
@@ -124,10 +122,10 @@ def calculate_task_score(task_data, weights=None):
 
     # 6) Tie-breaker (deterministic-ish: use hash of title or importance/time)
     tie_value = cfg.get("tie_base", 5)
-    # produce small deterministic tie-breaker from title if available
+
     title = str(task_data.get("title") or "")
     if title:
-        # deterministic integer from title
+        
         tb = sum(ord(ch) for ch in title) % 7
     else:
         tb = 0
